@@ -276,13 +276,14 @@ def install_and_configure_neutron():
     execute_db_commnads("GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'neutron';")
     execute_db_commnads("GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'localhost' IDENTIFIED BY 'neutron';")
     
-	execute("apt-get install openvswitch-switch openvswitch-datapath-dkms -y", True)
+    execute("apt-get install openvswitch-switch openvswitch-datapath-dkms -y", True)
 
     execute("ovs-vsctl --may-exist add-br br-int")
     execute("ovs-vsctl --may-exist add-br br-eth1") 
     execute("ovs-vsctl --may-exist add-port br-eth1 eth1")
     execute("ovs-vsctl --may-exist add-br br-ex")
-   	execute("apt-get install neutron-server neutron-plugin-openvswitch neutron-plugin-openvswitch-agent neutron-dhcp-agent neutron-l3-agent neutron-metadata-agent -y", True)
+    
+    execute("apt-get install neutron-server neutron-plugin-openvswitch neutron-plugin-openvswitch-agent neutron-dhcp-agent neutron-l3-agent neutron-metadata-agent -y", True)
     
     add_to_conf(neutron_conf, "DEFAULT", "core_plugin", "neutron.plugins.openvswitch.ovs_neutron_plugin.OVSNeutronPluginV2")
     add_to_conf(neutron_conf, "DEFAULT", "verbose", "true")
@@ -305,7 +306,7 @@ def install_and_configure_neutron():
     add_to_conf(neutron_plugin_conf, "OVS", "tenant_network_type", "vlan")
     add_to_conf(neutron_plugin_conf, "OVS", "network_vlan_ranges", "physnet1:1000:2999")
     add_to_conf(neutron_plugin_conf, "OVS", "integration_bridge", "br-int")
-	add_to_conf(neutron_plugin_conf, "securitygroup", "firewall_driver", "neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver")
+    add_to_conf(neutron_plugin_conf, "securitygroup", "firewall_driver", "neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver")
     
     add_to_conf(neutron_dhcp_ini, "DEFAULT", "interface_driver", "neutron.agent.linux.interface.OVSInterfaceDriver")
     add_to_conf(neutron_dhcp_ini, "DEFAULT", "dhcp_driver", "neutron.agent.linux.dhcp.Dnsmasq")
@@ -315,7 +316,7 @@ def install_and_configure_neutron():
     execute("service neutron-server restart", True)
     execute("service neutron-plugin-openvswitch-agent restart", True)
     execute("service neutron-dhcp-agent restart", True) 
-	execute("service neutron-l3-agent restart", True)
+    execute("service neutron-l3-agent restart", True)
 
 
 def install_and_configure_nova():
