@@ -107,8 +107,8 @@ def initialize_system():
     execute("apt-get autoclean -y" , True)
     execute("apt-get update -y" , True)
     execute("apt-get install ubuntu-cloud-keyring python-setuptools python-iniparse python-psutil -y", True)
-    delete_file("/etc/apt/sources.list.d/grizzly.list")
-    execute("echo deb http://ubuntu-cloud.archive.canonical.com/ubuntu precise-updates/grizzly main >> /etc/apt/sources.list.d/grizzly.list")
+    delete_file("/etc/apt/sources.list.d/havana.list")
+    execute("echo deb http://ubuntu-cloud.archive.canonical.com/ubuntu precise-updates/havana main >> /etc/apt/sources.list.d/havana.list")
     execute("apt-get update -y", True)
     
     global iniparse
@@ -174,12 +174,12 @@ def _create_keystone_users():
     execute("keystone endpoint-create --region region --service_id=%s --publicurl='http://%s:8774/v2/$(tenant_id)s' --internalurl='http://127.0.0.1:8774/v2/$(tenant_id)s' --adminurl='http://127.0.0.1:8774/v2/$(tenant_id)s'" % (nova_service, ip_address))
 
     
-    #quantum
-    quantum_user = execute("keystone user-create --tenant_id %s --name quantum --pass quantum --enabled true|grep ' id '|awk '{print $4}'" % service_tenant)
-    execute("keystone user-role-add --user_id %s --tenant_id %s --role_id %s" % (quantum_user, service_tenant, admin_role))
+    #neutron
+    neutron_user = execute("keystone user-create --tenant_id %s --name neutron --pass neutron --enabled true|grep ' id '|awk '{print $4}'" % service_tenant)
+    execute("keystone user-role-add --user_id %s --tenant_id %s --role_id %s" % (neutron_user, service_tenant, admin_role))
     
-    quantum_service = execute("keystone service-create --name=quantum --type=network  --description='OpenStack Networking service'|grep ' id '|awk '{print $4}'")
-    execute("keystone endpoint-create --region region --service_id=%s --publicurl=http://%s:9696/ --internalurl=http://127.0.0.1:9696/ --adminurl=http://127.0.0.1:9696/" % (quantum_service, ip_address))
+    neutron_service = execute("keystone service-create --name=neutron --type=network  --description='OpenStack Networking service'|grep ' id '|awk '{print $4}'")
+    execute("keystone endpoint-create --region region --service_id=%s --publicurl=http://%s:9696/ --internalurl=http://127.0.0.1:9696/ --adminurl=http://127.0.0.1:9696/" % (neutron_service, ip_address))
 
     #write a rc file
     adminrc = "/root/adminrc"
@@ -264,54 +264,58 @@ def install_and_configure_glance():
     
 
 
-def install_and_configure_quantum():
-    quantum_conf = "/etc/quantum/quantum.conf"
-    quantum_paste_conf = "/etc/quantum/api-paste.ini"
-    quantum_plugin_conf = "/etc/quantum/plugins/linuxbridge/linuxbridge_conf.ini"
-    quantum_dhcp_conf = "/etc/quantum/dhcp_agent.ini"
+def install_and_configure_neutron():
+    neutron_conf = "/etc/neutron/neutron.conf"
+    neutron_paste_conf = "/etc/neutron/api-paste.ini"
+    neutron_plugin_conf = "/etc/neutron/plugins/openvswitch/ovs_neutron_plugin.ini"
+    neutron_dhcp_ini="/etc/neutron/dhcp_agent.ini"
+    neutron_l3_ini="/etc/neutron/l3_agent.ini"
+	
+    execute_db_commnads("DROP DATABASE IF EXISTS neutron;")
+    execute_db_commnads("CREATE DATABASE neutron;")
+    execute_db_commnads("GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'%' IDENTIFIED BY 'neutron';")
+    execute_db_commnads("GRANT ALL PRIVILEGES ON neutron.* TO 'neutron'@'localhost' IDENTIFIED BY 'neutron';")
     
-    execute_db_commnads("DROP DATABASE IF EXISTS quantum;")
-    execute_db_commnads("CREATE DATABASE quantum;")
-    execute_db_commnads("GRANT ALL PRIVILEGES ON quantum.* TO 'quantum'@'%' IDENTIFIED BY 'quantum';")
-    execute_db_commnads("GRANT ALL PRIVILEGES ON quantum.* TO 'quantum'@'localhost' IDENTIFIED BY 'quantum';")
+	execute("apt-get install openvswitch-switch openvswitch-datapath-dkms -y", True)
+
+    execute("ovs-vsctl --may-exist add-br br-int")
+    execute("ovs-vsctl --may-exist add-br br-eth1") 
+    execute("ovs-vsctl --may-exist add-port br-eth1 eth1")
+    execute("ovs-vsctl --may-exist add-br br-ex")
+   	execute("apt-get install neutron-server neutron-plugin-openvswitch neutron-plugin-openvswitch-agent neutron-dhcp-agent neutron-l3-agent neutron-metadata-agent -y", True)
     
-    execute("apt-get install quantum-server quantum-plugin-linuxbridge quantum-plugin-linuxbridge-agent quantum-dhcp-agent dnsmasq -y", True)
+    add_to_conf(neutron_conf, "DEFAULT", "core_plugin", "neutron.plugins.openvswitch.ovs_neutron_plugin.OVSNeutronPluginV2")
+    add_to_conf(neutron_conf, "DEFAULT", "verbose", "true")
+    add_to_conf(neutron_conf, "DEFAULT", "debug", "true")
+    add_to_conf(neutron_conf, "DEFAULT", "auth_strategy", "keystone")
+    add_to_conf(neutron_conf, "DEFAULT", "rabbit_host", "127.0.0.1")
+    add_to_conf(neutron_conf, "DEFAULT", "rabbit_port", "5672")
+    add_to_conf(neutron_conf, "DEFAULT", "allow_overlapping_ips", "False")
+    add_to_conf(neutron_conf, "DEFAULT", "root_helper", "sudo neutron-rootwrap /etc/neutron/rootwrap.conf")
     
-    add_to_conf(quantum_conf, "DEFAULT", "core_plugin", "quantum.plugins.linuxbridge.lb_quantum_plugin.LinuxBridgePluginV2")
-    add_to_conf(quantum_conf, "DEFAULT", "verbose", "true")
-    add_to_conf(quantum_conf, "DEFAULT", "debug", "true")
-    add_to_conf(quantum_conf, "DEFAULT", "auth_strategy", "keystone")
-    add_to_conf(quantum_conf, "DEFAULT", "rabbit_host", "127.0.0.1")
-    add_to_conf(quantum_conf, "DEFAULT", "rabbit_port", "5672")
-    add_to_conf(quantum_conf, "DEFAULT", "allow_overlapping_ips", "False")
-    add_to_conf(quantum_conf, "DEFAULT", "root_helper", "sudo quantum-rootwrap /etc/quantum/rootwrap.conf")
+    add_to_conf(neutron_paste_conf, "filter:authtoken", "auth_host", "127.0.0.1")
+    add_to_conf(neutron_paste_conf, "filter:authtoken", "auth_port", "35357")
+    add_to_conf(neutron_paste_conf, "filter:authtoken", "auth_protocol", "http")
+    add_to_conf(neutron_paste_conf, "filter:authtoken", "admin_tenant_name", "service")
+    add_to_conf(neutron_paste_conf, "filter:authtoken", "admin_user", "neutron")
+    add_to_conf(neutron_paste_conf, "filter:authtoken", "admin_password", "neutron")
     
-    add_to_conf(quantum_paste_conf, "filter:authtoken", "auth_host", "127.0.0.1")
-    add_to_conf(quantum_paste_conf, "filter:authtoken", "auth_port", "35357")
-    add_to_conf(quantum_paste_conf, "filter:authtoken", "auth_protocol", "http")
-    add_to_conf(quantum_paste_conf, "filter:authtoken", "admin_tenant_name", "service")
-    add_to_conf(quantum_paste_conf, "filter:authtoken", "admin_user", "quantum")
-    add_to_conf(quantum_paste_conf, "filter:authtoken", "admin_password", "quantum")
+    add_to_conf(neutron_plugin_conf, "DATABASE", "sql_connection", "mysql://neutron:neutron@localhost/neutron")
+    add_to_conf(neutron_plugin_conf, "OVS", "bridge_mappings", "physnet1:br-eth1")
+    add_to_conf(neutron_plugin_conf, "OVS", "tenant_network_type", "vlan")
+    add_to_conf(neutron_plugin_conf, "OVS", "network_vlan_ranges", "physnet1:1000:2999")
+    add_to_conf(neutron_plugin_conf, "OVS", "integration_bridge", "br-int")
+	add_to_conf(neutron_plugin_conf, "securitygroup", "firewall_driver", "neutron.agent.linux.iptables_firewall.OVSHybridIptablesFirewallDriver")
     
-    add_to_conf(quantum_plugin_conf, "DATABASE", "sql_connection", "mysql://quantum:quantum@localhost/quantum")
-    add_to_conf(quantum_plugin_conf, "LINUX_BRIDGE", "physical_interface_mappings", "physnet1:eth1")
-    add_to_conf(quantum_plugin_conf, "VLANS", "tenant_network_type", "vlan")
-    add_to_conf(quantum_plugin_conf, "VLANS", "network_vlan_ranges", "physnet1:1000:2999")
-    
-    add_to_conf(quantum_dhcp_conf, "DEFAULT", "interface_driver", "quantum.agent.linux.interface.BridgeInterfaceDriver")
-    add_to_conf(quantum_dhcp_conf, "DEFAULT", "use_namespaces", "False")
-    add_to_conf(quantum_dhcp_conf, "DEFAULT", "verbose", "true")
-    add_to_conf(quantum_dhcp_conf, "DEFAULT", "debug", "true")
-    
-    delete_file("/etc/quantum/plugin.ini")
-    execute("ln -s /etc/quantum/plugins/linuxbridge/linuxbridge_conf.ini /etc/quantum/plugin.ini")
-    execute("sed -i 's/\/etc\/quantum\/plugins\/openvswitch\/ovs_quantum_plugin.ini/\/etc\/quantum\/plugins\/linuxbridge\/linuxbridge_conf.ini/g' /etc/default/quantum-server")
-    
-    kill_process("dnsmasq")
-    
-    execute("service quantum-server restart", True)
-    execute("service quantum-plugin-linuxbridge-agent restart", True)
-    execute("service quantum-dhcp-agent restart", True) 
+    add_to_conf(neutron_dhcp_ini, "DEFAULT", "interface_driver", "neutron.agent.linux.interface.OVSInterfaceDriver")
+    add_to_conf(neutron_dhcp_ini, "DEFAULT", "dhcp_driver", "neutron.agent.linux.dhcp.Dnsmasq")
+
+    add_to_conf(neutron_l3_ini, "DEFAULT", "interface_driver", "neutron.agent.linux.interface.OVSInterfaceDriver")
+  
+    execute("service neutron-server restart", True)
+    execute("service neutron-plugin-openvswitch-agent restart", True)
+    execute("service neutron-dhcp-agent restart", True) 
+	execute("service neutron-l3-agent restart", True)
 
 
 def install_and_configure_nova():
@@ -324,7 +328,7 @@ def install_and_configure_nova():
     execute_db_commnads("GRANT ALL PRIVILEGES ON nova.* TO 'nova'@'%' IDENTIFIED BY 'nova';")
     execute_db_commnads("GRANT ALL PRIVILEGES ON nova.* TO 'nova'@'localhost' IDENTIFIED BY 'nova';")
     
-    execute("apt-get install kvm libvirt-bin -y")
+    execute("apt-get install kvm libvirt-bin python-libvirt -y")
     execute("apt-get install nova-api nova-cert nova-scheduler nova-conductor nova-compute-kvm novnc nova-consoleauth nova-novncproxy -y", True)
     
        
@@ -343,31 +347,28 @@ def install_and_configure_nova():
     add_to_conf(nova_conf, "DEFAULT", "rabbit_host", "127.0.0.1")
     add_to_conf(nova_conf, "DEFAULT", "sql_connection", "mysql://nova:nova@localhost/nova")
     add_to_conf(nova_conf, "DEFAULT", "glance_api_servers", "127.0.0.1:9292")
-    add_to_conf(nova_conf, "DEFAULT", "compute_driver", "libvirt.LibvirtDriver")
     add_to_conf(nova_conf, "DEFAULT", "dhcpbridge_flagfile", "/etc/nova/nova.conf")
-    add_to_conf(nova_conf, "DEFAULT", "firewall_driver", "nova.virt.libvirt.firewall.IptablesFirewallDriver")
+    add_to_conf(nova_conf, "DEFAULT", "firewall_driver", "nova.virt.firewall.NoopFirewallDriver")
+    add_to_conf(nova_conf, "DEFAULT", "security_group_api", "neutron")
+    add_to_conf(nova_conf, "DEFAULT", "libvirt_vif_driver", "nova.virt.libvirt.vif.LibvirtHybridOVSBridgeDriver")
     add_to_conf(nova_conf, "DEFAULT", "root_helper", "sudo nova-rootwrap /etc/nova/rootwrap.conf")
-    add_to_conf(nova_conf, "DEFAULT", "compute_driver", "libvirt.LibvirtDriver")
     add_to_conf(nova_conf, "DEFAULT", "auth_strategy", "keystone")
     add_to_conf(nova_conf, "DEFAULT", "novnc_enabled", "true")
     add_to_conf(nova_conf, "DEFAULT", "novncproxy_base_url", "http://%s:6080/vnc_auto.html" % ip_address)
     add_to_conf(nova_conf, "DEFAULT", "novncproxy_port", "6080")
     add_to_conf(nova_conf, "DEFAULT", "vncserver_proxyclient_address", ip_address)
     add_to_conf(nova_conf, "DEFAULT", "vncserver_listen", "0.0.0.0")
-    add_to_conf(nova_conf, "DEFAULT", "network_api_class", "nova.network.quantumv2.api.API")
-    add_to_conf(nova_conf, "DEFAULT", "quantum_admin_username", "quantum")
-    add_to_conf(nova_conf, "DEFAULT", "quantum_admin_password", "quantum")
-    add_to_conf(nova_conf, "DEFAULT", "quantum_admin_tenant_name", "service")
-    add_to_conf(nova_conf, "DEFAULT", "quantum_admin_auth_url", "http://127.0.0.1:5000/v2.0/")
-    add_to_conf(nova_conf, "DEFAULT", "quantum_auth_strategy", "keystone")
-    add_to_conf(nova_conf, "DEFAULT", "quantum_url", "http://127.0.0.1:9696/")
-    add_to_conf(nova_conf, "DEFAULT", "linuxnet_interface_driver", "nova.network.linux_net.QuantumLinuxBridgeInterfaceDriver")
-    
-    
+    add_to_conf(nova_conf, "DEFAULT", "network_api_class", "nova.network.neutronv2.api.API")
+    add_to_conf(nova_conf, "DEFAULT", "neutron_admin_username", "neutron")
+    add_to_conf(nova_conf, "DEFAULT", "neutron_admin_password", "neutron")
+    add_to_conf(nova_conf, "DEFAULT", "neutron_admin_tenant_name", "service")
+    add_to_conf(nova_conf, "DEFAULT", "neutron_admin_auth_url", "http://127.0.0.1:5000/v2.0/")
+    add_to_conf(nova_conf, "DEFAULT", "neutron_auth_strategy", "keystone")
+    add_to_conf(nova_conf, "DEFAULT", "neutron_url", "http://127.0.0.1:9696/")
+      
     add_to_conf(nova_compute_conf, "DEFAULT", "libvirt_type", "qemu")
     add_to_conf(nova_compute_conf, "DEFAULT", "compute_driver", "libvirt.LibvirtDriver")
     add_to_conf(nova_compute_conf, "DEFAULT", "libvirt_vif_type", "ethernet")
-    add_to_conf(nova_compute_conf, "DEFAULT", "libvirt_vif_driver", "nova.virt.libvirt.vif.QuantumLinuxBridgeVIFDriver")
     
     execute("nova-manage db sync")
     
@@ -391,6 +392,6 @@ install_rabbitmq()
 install_database()
 install_and_configure_keystone()
 install_and_configure_glance()
-install_and_configure_quantum()
+install_and_configure_neutron()
 install_and_configure_nova()
 install_and_configure_dashboard()
