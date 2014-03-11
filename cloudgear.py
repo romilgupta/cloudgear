@@ -67,10 +67,14 @@ def get_from_conf(conf_file, section, param):
         raise Exception("parameter missing")
     else:
         return config.get(section, param)
-    
+
+def print_format(string):
+    print "+%s+" %("-" * len(string))
+    print "|%s|" % string
+    print "+%s+" %("-" * len(string))  
     
 def execute(command, display=False):
-    print "executing commnand : %s " % command
+    print_format "executing commnand : %s " % command
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if display:
         while True:
