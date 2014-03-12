@@ -13,7 +13,6 @@ import webbrowser
 iniparse = None
 psutil = None
 
-
 def kill_process(process_name):
     for proc in psutil.process_iter():
         if proc.name == process_name:
@@ -49,7 +48,6 @@ def add_to_conf(conf_file, section, param, val):
     with open(conf_file, 'w') as f:
         config.write(f)
 
-
 def delete_from_conf(conf_file, section, param):
     config = iniparse.ConfigParser()
     config.readfp(open(conf_file))
@@ -59,7 +57,6 @@ def delete_from_conf(conf_file, section, param):
         config.remove_option(section, param)
     with open(conf_file, 'w') as f:
         config.write(f)    
-    
     
 def get_from_conf(conf_file, section, param):
     config = iniparse.ConfigParser()
@@ -97,12 +94,10 @@ def execute(command, display=False):
         print "Error", stderr
         raise Exception(command, exitCode, output)
 
-
 def execute_db_commnads(command):
     cmd = """mysql -uroot -e "%s" """ % command
     output = execute(cmd)
     return output
-
 
 def initialize_system():
     if not os.geteuid() == 0:
@@ -134,14 +129,11 @@ def install_rabbitmq():
     execute("service rabbitmq-server restart", True)
     time.sleep(2)
 
-    
 def install_database():
     execute("apt-get install mysql-server python-mysqldb -y", True)
     execute("sed -i 's/127.0.0.1/0.0.0.0/g' /etc/mysql/my.cnf")
     execute("service mysql restart", True)
     time.sleep(2)
-
-
 
 def _create_keystone_users():
     os.environ['SERVICE_TOKEN'] = 'ADMINTOKEN'
@@ -153,15 +145,12 @@ def _create_keystone_users():
     admin_user = execute("keystone user-create --tenant_id %s --name admin --pass secret --enabled true|grep ' id '|awk '{print $4}'" % admin_tenant)
     admin_role = execute("keystone role-create --name admin|grep ' id '|awk '{print $4}'")
     execute("keystone user-role-add --user_id %s --tenant_id %s --role_id %s" % (admin_user, admin_tenant, admin_role))
-    
-    
+ 
     service_tenant = execute("keystone tenant-create --name service --description 'Service Tenant' --enabled true |grep ' id '|awk '{print $4}'")
-    
     
     #keystone
     keystone_service = execute("keystone service-create --name=keystone --type=identity --description='Keystone Identity Service'|grep ' id '|awk '{print $4}'")
     execute("keystone endpoint-create --region region --service_id=%s --publicurl=http://%s:5000/v2.0 --internalurl=http://127.0.0.1:5000/v2.0 --adminurl=http://127.0.0.1:35357/v2.0" % (keystone_service, ip_address))
-
     
     #Glance 
     glance_user = execute("keystone user-create --tenant_id %s --name glance --pass glance --enabled true|grep ' id '|awk '{print $4}'" % service_tenant)
@@ -170,7 +159,6 @@ def _create_keystone_users():
     glance_service = execute("keystone service-create --name=glance --type=image --description='Glance Image Service'|grep ' id '|awk '{print $4}'")
     execute("keystone endpoint-create --region region --service_id=%s --publicurl=http://%s:9292/v2 --internalurl=http://127.0.0.1:9292/v2 --adminurl=http://127.0.0.1:9292/v2" % (glance_service, ip_address))
 
-    
     #nova 
     nova_user = execute("keystone user-create --tenant_id %s --name nova --pass nova --enabled true|grep ' id '|awk '{print $4}'" % service_tenant)
     execute("keystone user-role-add --user_id %s --tenant_id %s --role_id %s" % (nova_user, service_tenant, admin_role))
@@ -178,7 +166,6 @@ def _create_keystone_users():
     nova_service = execute("keystone service-create --name=nova --type=compute --description='Nova Compute Service'|grep ' id '|awk '{print $4}'")
     execute("keystone endpoint-create --region region --service_id=%s --publicurl='http://%s:8774/v2/$(tenant_id)s' --internalurl='http://127.0.0.1:8774/v2/$(tenant_id)s' --adminurl='http://127.0.0.1:8774/v2/$(tenant_id)s'" % (nova_service, ip_address))
 
-    
     #neutron
     neutron_user = execute("keystone user-create --tenant_id %s --name neutron --pass neutron --enabled true|grep ' id '|awk '{print $4}'" % service_tenant)
     execute("keystone user-role-add --user_id %s --tenant_id %s --role_id %s" % (neutron_user, service_tenant, admin_role))
@@ -194,8 +181,7 @@ def _create_keystone_users():
     write_to_file(adminrc, "export OS_TENANT_NAME=admin\n")
     write_to_file(adminrc, "export OS_AUTH_URL=http://127.0.0.1:5000/v2.0\n")
     
-    
-    
+
 def install_and_configure_keystone():
     keystone_conf = "/etc/keystone/keystone.conf"
     
@@ -205,8 +191,7 @@ def install_and_configure_keystone():
     execute_db_commnads("GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'localhost' IDENTIFIED BY 'keystone';")
     
     execute("apt-get install keystone -y", True)
-    
-    
+
     add_to_conf(keystone_conf, "DEFAULT", "admin_token", "ADMINTOKEN")
     add_to_conf(keystone_conf, "DEFAULT", "admin_port", 35357)
     add_to_conf(keystone_conf, "sql", "connection", "mysql://keystone:keystone@localhost/keystone")
@@ -218,8 +203,6 @@ def install_and_configure_keystone():
     
     time.sleep(3)
     _create_keystone_users()
-
-
 
 def install_and_configure_glance():
     glance_api_conf = "/etc/glance/glance-api.conf"
@@ -233,30 +216,26 @@ def install_and_configure_glance():
     execute_db_commnads("GRANT ALL PRIVILEGES ON glance.* TO 'glance'@'localhost' IDENTIFIED BY 'glance';")
     
     execute("apt-get install glance -y", True)
-    
-    
+
     add_to_conf(glance_api_paste_conf, "filter:authtoken", "auth_host", "127.0.0.1")
     add_to_conf(glance_api_paste_conf, "filter:authtoken", "auth_port", "35357")
     add_to_conf(glance_api_paste_conf, "filter:authtoken", "auth_protocol", "http")
     add_to_conf(glance_api_paste_conf, "filter:authtoken", "admin_tenant_name", "service")
     add_to_conf(glance_api_paste_conf, "filter:authtoken", "admin_user", "glance")
     add_to_conf(glance_api_paste_conf, "filter:authtoken", "admin_password", "glance")
-    
-    
+   
     add_to_conf(glance_registry_paste_conf, "filter:authtoken", "auth_host", "127.0.0.1")
     add_to_conf(glance_registry_paste_conf, "filter:authtoken", "auth_port", "35357")
     add_to_conf(glance_registry_paste_conf, "filter:authtoken", "auth_protocol", "http")
     add_to_conf(glance_registry_paste_conf, "filter:authtoken", "admin_tenant_name", "service")
     add_to_conf(glance_registry_paste_conf, "filter:authtoken", "admin_user", "glance")
     add_to_conf(glance_registry_paste_conf, "filter:authtoken", "admin_password", "glance")
-    
-    
+
     add_to_conf(glance_api_conf, "DEFAULT", "sql_connection", "mysql://glance:glance@localhost/glance")
     add_to_conf(glance_api_conf, "paste_deploy", "flavor", "keystone")
     add_to_conf(glance_api_conf, "DEFAULT", "verbose", "true")
     add_to_conf(glance_api_conf, "DEFAULT", "debug", "true")
-    
-    
+
     add_to_conf(glance_registry_conf, "DEFAULT", "sql_connection", "mysql://glance:glance@localhost/glance")
     add_to_conf(glance_registry_conf, "paste_deploy", "flavor", "keystone")
     add_to_conf(glance_registry_conf, "DEFAULT", "verbose", "true")
@@ -266,8 +245,6 @@ def install_and_configure_glance():
     
     execute("service glance-api restart", True)    
     execute("service glance-registry restart", True)
-    
-
 
 def install_and_configure_neutron():
     neutron_conf = "/etc/neutron/neutron.conf"
@@ -337,15 +314,13 @@ def install_and_configure_nova():
     execute("apt-get install kvm libvirt-bin python-libvirt -y")
     execute("apt-get install nova-api nova-cert nova-scheduler nova-conductor nova-compute-kvm novnc nova-consoleauth nova-novncproxy -y", True)
     
-       
     add_to_conf(nova_paste_conf, "filter:authtoken", "auth_host", "127.0.0.1")
     add_to_conf(nova_paste_conf, "filter:authtoken", "auth_port", "35357")
     add_to_conf(nova_paste_conf, "filter:authtoken", "auth_protocol", "http")
     add_to_conf(nova_paste_conf, "filter:authtoken", "admin_tenant_name", "service")
     add_to_conf(nova_paste_conf, "filter:authtoken", "admin_user", "nova")
     add_to_conf(nova_paste_conf, "filter:authtoken", "admin_password", "nova")
-    
-    
+ 
     add_to_conf(nova_conf, "DEFAULT", "logdir", "/var/log/nova")
     add_to_conf(nova_conf, "DEFAULT", "verbose", "true")
     add_to_conf(nova_conf, "DEFAULT", "debug", "true")
