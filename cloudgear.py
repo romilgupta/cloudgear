@@ -6,6 +6,7 @@ import fcntl
 import struct
 import socket
 import subprocess
+import webbrowser
 
 # These are module names which are not installed by default.
 # These modules will be loaded later after downloading
@@ -74,7 +75,7 @@ def print_format(string):
     print "+%s+" %("-" * len(string))  
     
 def execute(command, display=False):
-    print_format "executing commnand : %s " % command
+    print_format ("executing commnand : %s " % command)
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if display:
         while True:
@@ -392,6 +393,13 @@ def install_and_configure_dashboard():
     execute("apt-get install openstack-dashboard -y", True)
     execute("service apache2 restart", True)
 
+def launch_horizon():
+    url = 'http://localhost/horizon'
+    if sys.platform == 'Linux':
+        subprocess.Popen(['open', url])
+    else:
+        webbrowser.open_new_tab(url)
+
 initialize_system()
 install_rabbitmq()
 install_database()
@@ -400,4 +408,5 @@ install_and_configure_glance()
 install_and_configure_neutron()
 install_and_configure_nova()
 install_and_configure_dashboard()
-print_format(" Installation successfull! Login into horizon http://%s/horizon  Username:admin  Password:secret " % ip_address)
+print_format(" Installation successfull! Please wait while script open your browser")
+launch_horizon()
